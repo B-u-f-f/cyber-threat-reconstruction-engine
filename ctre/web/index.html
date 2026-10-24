@@ -1,0 +1,78 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>CTRE — Threat Reconstruction</title>
+<link rel="stylesheet" href="/style.css">
+</head>
+<body>
+<header>
+  <h1>Cyber Threat Reconstruction Engine</h1>
+  <p class="sub">Offline, read-only DFIR correlation. Nothing leaves your machine.</p>
+</header>
+
+<main>
+  <section class="panel">
+    <h2>1 · Load artifacts</h2>
+    <p class="hint">Drop in any combination of an NTFS <code>$MFT</code>,
+      a <code>$UsnJrnl:$J</code> stream, and a classic <code>.pcap</code>.
+      Files are parsed locally and read-only.</p>
+    <div class="slots" id="slots"></div>
+    <div class="row">
+      <button id="sample" class="ghost">Load sample case</button>
+      <button id="clear" class="ghost">Clear all</button>
+    </div>
+  </section>
+
+  <section class="panel">
+    <h2>2 · Options</h2>
+    <div class="opts">
+      <label>Exfil threshold (bytes)
+        <input type="number" id="min_exfil_bytes" value="100000" min="0" step="1000">
+      </label>
+      <label>Correlation window (minutes)
+        <input type="number" id="window_minutes" value="5" min="1" max="1440" step="1">
+      </label>
+      <label>MFT record size
+        <select id="mft_record_size">
+          <option value="1024">1024</option>
+          <option value="4096">4096</option>
+        </select>
+      </label>
+    </div>
+    <div class="row">
+      <button id="analyze" class="primary" disabled>Run analysis</button>
+      <span id="status" class="status"></span>
+    </div>
+  </section>
+
+  <section class="panel" id="results" hidden>
+    <h2>3 · Results</h2>
+    <div class="summary" id="summary"></div>
+
+    <div class="row downloads">
+      <a id="dl-report" href="/api/report" class="ghost">Download HTML report</a>
+      <a id="dl-json" href="/api/export" class="ghost">Download JSON</a>
+    </div>
+
+    <h3>Timestomping findings (<span id="n-findings">0</span>)</h3>
+    <div id="findings"></div>
+
+    <h3>Network / disk correlations (<span id="n-corr">0</span>)</h3>
+    <div id="correlations"></div>
+
+    <h3>Unified timeline (<span id="n-timeline">0</span>)</h3>
+    <div class="filters" id="filters"></div>
+    <div id="timeline"></div>
+  </section>
+</main>
+
+<footer>
+  <p>No TLS secrets are extracted and no traffic is decrypted; network findings
+     use capture metadata only.</p>
+</footer>
+
+<script src="/app.js"></script>
+</body>
+</html>

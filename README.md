@@ -46,6 +46,25 @@ python -m pytest -q        # run the test suite
 
 ## Usage
 
+### Web UI (default)
+
+```bash
+python -m ctre
+```
+
+This starts a local server on `http://127.0.0.1:8765/` and opens it in your
+browser. Load the built-in sample case (or drag in your own `$MFT`,
+`$UsnJrnl` and `.pcap`), set the options, and run the analysis. Results —
+timestomping findings, exfil correlations and a filterable timeline — render
+in the page, and you can download the HTML report or JSON.
+
+The server binds to loopback only, requires a custom request header on every
+API call (so other websites in your browser cannot drive it), sends a strict
+Content-Security-Policy, and deletes uploaded artifacts when it stops. Use
+`--port`, `--no-browser` or `--verbose` to adjust.
+
+### Command line
+
 Generate self-consistent synthetic artifacts (includes a planted timestomped
 file and a timed exfil transfer), then analyze them:
 
@@ -78,10 +97,14 @@ ctre/
   pcap_meta.py    classic-pcap metadata extractor (no decryption)
   correlate.py    unified timeline + exfil correlation
   report.py       static, self-contained HTML report
+  service.py      pipeline runner shared by the CLI and web UI
+  web.py          local (loopback-only) web server
+  web/            front-end assets (index.html, app.js, style.css)
   gen_testdata.py synthetic artifact generator
   cli.py          command-line interface
 tests/
   test_pipeline.py  round-trip + end-to-end tests
+  test_web.py       web server routing, security guards, full cycle
 ```
 
 ## License

@@ -1,0 +1,20 @@
+[build-system]
+requires = ["setuptools>=61"]
+build-backend = "setuptools.build_meta"
+
+[project]
+name = "ctre"
+version = "0.1.0"
+description = "Offline, read-only DFIR engine: NTFS timestomping detection and pcap metadata timeline correlation"
+readme = "README.md"
+requires-python = ">=3.10"
+license = { text = "MIT" }
+
+[project.scripts]
+ctre = "ctre.cli:main"
+
+[tool.setuptools]
+packages = ["ctre"]
+
+[tool.setuptools.package-data]
+ctre = ["web/*.html", "web/*.css", "web/*.js"]

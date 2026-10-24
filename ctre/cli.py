@@ -15,6 +15,12 @@ from .timestomp import analyze
 from .usnjrnl import parse_usnjrnl
 
 
+def _cmd_web(args) -> int:
+    from .web import serve
+    return serve(port=args.port, open_browser=not args.no_browser,
+                 verbose=args.verbose)
+
+
 def _cmd_gen(args) -> int:
     paths = generate(args.out_dir)
     print("Wrote synthetic artifacts:")
@@ -86,7 +92,15 @@ def build_parser() -> argparse.ArgumentParser:
     )
     p.add_argument("--version", action="version",
                    version=f"ctre {__version__}")
-    sub = p.add_subparsers(dest="command", required=True)
+    sub = p.add_subparsers(dest="command")
+
+    w = sub.add_parser("web", help="launch the local web UI (default)")
+    w.add_argument("--port", type=int, default=8765)
+    w.add_argument("--no-browser", action="store_true",
+                   help="do not open a browser automatically")
+    w.add_argument("--verbose", action="store_true",
+                   help="log each HTTP request")
+    w.set_defaults(func=_cmd_web)
 
     g = sub.add_parser("gen", help="generate synthetic sample artifacts")
     g.add_argument("out_dir", nargs="?", default="sample_artifacts")
@@ -105,9 +119,13 @@ def build_parser() -> argparse.ArgumentParser:
 
 
 def main(argv=None) -> int:
-    args = build_parser().parse_args(argv)
-    if not (getattr(args, "mft", None) or getattr(args, "usnjrnl", None)
-            or getattr(args, "pcap", None) or args.command == "gen"):
+    parser = build_parser()
+    args = parser.parse_args(argv)
+    if args.command is None:
+        # No subcommand: launch the web UI with defaults.
+        args = parser.parse_args(["web", *(argv or [])] if argv else ["web"])
+    if args.command == "analyze" and not (
+            args.mft or args.usnjrnl or args.pcap):
         print("error: provide at least one of --mft/--usnjrnl/--pcap",
               file=sys.stderr)
         return 2
