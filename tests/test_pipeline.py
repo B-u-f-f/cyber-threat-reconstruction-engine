@@ -112,3 +112,70 @@ def test_report_escaping():
     )
     assert "<script>x</script>" not in html
     assert "&lt;script&gt;" in html
+
+
+# --------------------------------------------------------------------------- #
+# Regression tests from the validation pass
+# --------------------------------------------------------------------------- #
+from ctre.cli import main as cli_main
+from ctre.mft import MftEntry, Timestamps
+from ctre.usnjrnl import UsnRecord
+
+_OLD = datetime(2020, 3, 1, 8, 15, 3, 123456, tzinfo=timezone.utc)
+_RECENT = datetime(2026, 10, 20, 9, 0, 0, 250000, tzinfo=timezone.utc)
+
+
+def _old_file():
+    si = Timestamps(created=_OLD, modified=_RECENT, raw_created=1,
+                    raw_modified=1)
+    return MftEntry(70, True, False, 3, "notes.txt", si=si,
+                    fn=Timestamps(created=_OLD))
+
+
+def test_wrapped_journal_is_not_timestomping():
+    # Journal rolled over: the file's creation is gone, only a recent edit
+    # survives. An old SI creation time is expected, not suspicious.
+    jrnl = [UsnRecord(1, (3 << 48) | 70, 5, _RECENT, ["DATA_EXTEND"], 0,
+                      "notes.txt")]
+    assert analyze([_old_file()], {70: jrnl}) == []
+
+
+def test_reused_mft_record_is_not_timestomping():
+    # FILE_CREATE belongs to a previous file (sequence 2) at the same record.
+    jrnl = [UsnRecord(1, (2 << 48) | 70, 5, _RECENT, ["FILE_CREATE"], 0,
+                      "deleted.tmp")]
+    assert analyze([_old_file()], {70: jrnl}) == []
+
+
+def test_sparse_journal_prefix():
+    with tempfile.TemporaryDirectory() as tmp:
+        paths = _artifacts(tmp)
+        sparse = os.path.join(tmp, "sparse.bin")
+        with open(paths["usnjrnl"], "rb") as src, open(sparse, "wb") as dst:
+            dst.write(b"\x00" * (4 * 1024 * 1024 + 8))
+            dst.write(src.read())
+        assert len(parse_usnjrnl(sparse).records) == 4
+
+
+def test_cli_reports_bad_input_cleanly(capsys):
+    with tempfile.TemporaryDirectory() as tmp:
+        ng = os.path.join(tmp, "x.pcapng")
+        with open(ng, "wb") as fh:
+            fh.write(b"\x0a\x0d\x0d\x0a" + b"\x00" * 60)
+        assert cli_main(["analyze", "--pcap", ng]) == 1
+        assert "pcapng is not supported" in capsys.readouterr().err
+        missing = os.path.join(tmp, "missing.pcap")
+        assert cli_main(["analyze", "--pcap", missing]) == 1
+
+
+def test_cli_end_to_end():
+    with tempfile.TemporaryDirectory() as tmp:
+        paths = _artifacts(tmp)
+        report = os.path.join(tmp, "r.html")
+        rc = cli_main(["analyze", "--mft", paths["mft"],
+                       "--usnjrnl", paths["usnjrnl"],
+                       "--pcap", paths["pcap"], "--report", report])
+        assert rc == 0
+        with open(report, encoding="utf-8") as fh:
+            html = fh.read()
+        assert "SI_BEFORE_FN" in html and "exfil.example.net" in html

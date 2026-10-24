@@ -45,14 +45,6 @@ class Flow:
     sni: str | None = None
 
     @property
-    def key(self) -> tuple:
-        # Canonical (endpoint-order-independent) 5-tuple.
-        a = (self.src, self.sport)
-        b = (self.dst, self.dport)
-        lo, hi = sorted([a, b])
-        return (lo, hi, self.proto)
-
-    @property
     def total_bytes(self) -> int:
         return self.bytes_src_to_dst + self.bytes_dst_to_src
 
@@ -81,6 +73,10 @@ def _read_header(data: bytes):
         magic_be = struct.unpack_from(">I", data, 0)[0]
         if magic_be in (PCAP_MAGIC_US, PCAP_MAGIC_NS):
             endian, nano = ">", magic_be == PCAP_MAGIC_NS
+        elif data[:4] == b"\x0a\x0d\x0d\x0a":
+            raise ValueError(
+                "pcapng is not supported; convert with "
+                "'editcap -F libpcap in.pcapng out.pcap'")
         else:
             raise ValueError("not a classic pcap file")
     linktype = struct.unpack_from(endian + "I", data, 20)[0]
@@ -174,9 +170,15 @@ def parse_pcap(path: str) -> PcapResult:
         if (ip[0] >> 4) != 4:
             continue  # IPv4 only
         ihl = (ip[0] & 0x0F) * 4
+        total_len = struct.unpack_from(">H", ip, 2)[0]
+        if ihl < 20 or total_len < ihl:
+            continue
+        ip = ip[:total_len]  # drop Ethernet trailer padding
         proto = ip[9]
         src = socket.inet_ntoa(ip[12:16])
         dst = socket.inet_ntoa(ip[16:20])
+        if struct.unpack_from(">H", ip, 6)[0] & 0x1FFF:
+            continue  # non-first fragment: no L4 header to read
         l4 = ip[ihl:]
 
         if proto == IPPROTO_TCP and len(l4) >= 20:

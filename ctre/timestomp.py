@@ -46,10 +46,13 @@ class Finding:
 
 
 def _first_create(records: list[UsnRecord]) -> datetime | None:
+    # Only an explicit FILE_CREATE counts. The journal is a ring buffer, so on
+    # a real volume the oldest surviving record is usually NOT the creation;
+    # falling back to it would flag every older file that was edited recently.
     for r in records:
         if "FILE_CREATE" in r.reasons and r.timestamp:
             return r.timestamp
-    return records[0].timestamp if records else None
+    return None
 
 
 def _latest_journal_ts(records: list[UsnRecord]) -> datetime | None:
@@ -70,6 +73,10 @@ def analyze(
         si = entry.si
         fn = entry.fn
         jrnl = journal_by_record.get(entry.record_number, [])
+        # MFT record numbers are reused after deletion; only journal records
+        # carrying this entry's sequence number describe the same file.
+        if entry.sequence:
+            jrnl = [r for r in jrnl if r.sequence == entry.sequence]
 
         # Rule 1: SI created earlier than FN created.
         if fn and si.created and fn.created and si.created + _SKEW < fn.created:
@@ -104,7 +111,8 @@ def analyze(
                 entry.record_number, name, "ZERO_SUBSECOND", "medium",
                 "Multiple SI timestamps have all sub-second precision set to "
                 "zero. Normal filesystem activity rarely produces whole-second "
-                "times; many timestomping tools do.",
+                "times; many timestomping tools do. (Files extracted from ZIP "
+                "archives or copied from FAT media can also do this.)",
                 {"zeroed_fields": zeroed},
             ))
 

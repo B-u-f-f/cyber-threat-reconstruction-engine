@@ -8,6 +8,9 @@ timestamps stored in the $MFT.
 
 from __future__ import annotations
 
+import mmap
+import os
+import re
 import struct
 from dataclasses import dataclass, field
 
@@ -48,6 +51,10 @@ class UsnRecord:
         # Low 48 bits are the MFT record number; high 16 are the sequence.
         return self.file_ref & 0x0000FFFFFFFFFFFF
 
+    @property
+    def sequence(self) -> int:
+        return self.file_ref >> 48
+
 
 @dataclass
 class UsnJournal:
@@ -62,19 +69,35 @@ class UsnJournal:
         return out
 
 
-def parse_usnjrnl(path: str) -> UsnJournal:
-    """Parse a $UsnJrnl:$J stream (the $J data stream extracted to a file)."""
-    journal = UsnJournal()
-    with open(path, "rb") as fh:
-        data = fh.read()
+_NONZERO = re.compile(rb"[^\x00]")
 
+
+def parse_usnjrnl(path: str) -> UsnJournal:
+    """Parse a $UsnJrnl:$J stream (the $J data stream extracted to a file).
+
+    The file is memory-mapped rather than read into RAM: an extracted $J is
+    often gigabytes, most of it sparse zero padding.
+    """
+    with open(path, "rb") as fh:
+        if os.fstat(fh.fileno()).st_size == 0:
+            return UsnJournal()
+        with mmap.mmap(fh.fileno(), 0, access=mmap.ACCESS_READ) as data:
+            return _parse(data)
+
+
+def _parse(data) -> UsnJournal:
+    journal = UsnJournal()
     offset = 0
     n = len(data)
     while offset + 4 <= n:
         (record_len,) = struct.unpack_from("<I", data, offset)
         if record_len == 0:
-            # Runs of zero bytes are sparse padding between journal pages.
-            offset += 8
+            # Sparse padding: jump to the next non-zero byte, kept 8-aligned
+            # because records always start on an 8-byte boundary.
+            m = _NONZERO.search(data, offset)
+            if m is None:
+                break
+            offset = m.start() & ~7
             continue
         if record_len < 60 or offset + record_len > n:
             break

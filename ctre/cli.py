@@ -111,7 +111,11 @@ def main(argv=None) -> int:
         print("error: provide at least one of --mft/--usnjrnl/--pcap",
               file=sys.stderr)
         return 2
-    return args.func(args)
+    try:
+        return args.func(args)
+    except (OSError, ValueError) as exc:
+        print(f"error: {exc}", file=sys.stderr)
+        return 1
 
 
 if __name__ == "__main__":
