@@ -11,6 +11,20 @@
 \usepackage{caption}
 \usepackage{url}
 \usepackage[hidelinks]{hyperref}
+\usepackage{tikz}
+\usetikzlibrary{shapes.geometric, arrows.meta, positioning, calc}
+
+\tikzset{
+  io/.style   = {rectangle, rounded corners, draw, align=center,
+                 minimum height=8mm, inner sep=4pt, font=\small},
+  proc/.style = {rectangle, draw, align=center, minimum height=8mm,
+                 inner sep=4pt, font=\small},
+  dec/.style  = {diamond, draw, align=center, aspect=2.2, inner sep=1pt,
+                 font=\footnotesize},
+  flag/.style = {rectangle, rounded corners, draw, fill=black!8,
+                 align=center, inner sep=3pt, font=\footnotesize},
+  arr/.style  = {-{Latex[length=2mm]}},
+}
 
 \singlespacing
 
@@ -101,6 +115,34 @@ Artifact generator  & Writes synthetic \$MFT, \$UsnJrnl, and pcap test data \\
 
 \section{System Architecture and Methodology}
 
+Figure~\ref{fig:arch} shows the overall pipeline. The three artifacts are read
+by independent parsers; the parsed output then feeds two analysis stages, whose
+results are merged into one timeline and a report.
+
+\begin{figure}[htbp]
+\centering
+\begin{tikzpicture}[node distance=5mm and 11mm]
+  \node[io] (mft) {\$MFT};
+  \node[io, below=of mft] (usn) {\$UsnJrnl:\$J};
+  \node[io, below=of usn] (pcap) {.pcap};
+  \node[proc, right=12mm of usn] (parse) {Read-only\\parsers};
+  \node[proc, above right=3mm and 14mm of parse] (ts) {Timestomp\\detector};
+  \node[proc, below right=3mm and 14mm of parse] (corr) {Exfil\\correlator};
+  \node[io, right=14mm of parse, xshift=34mm] (out) {Timeline\\+ report};
+  \draw[arr] (mft) -- (parse);
+  \draw[arr] (usn) -- (parse);
+  \draw[arr] (pcap) -- (parse);
+  \draw[arr] (parse) -- (ts);
+  \draw[arr] (parse) -- (corr);
+  \draw[arr] (ts) -- (out);
+  \draw[arr] (corr) -- (out);
+\end{tikzpicture}
+\caption{CTRE pipeline: three artifacts are parsed read-only, analyzed for
+timestamp tampering and for disk/network correlation, and merged into one
+timeline and report.}
+\label{fig:arch}
+\end{figure}
+
 \subsection{Disk Parsing}
 The \$MFT parser reads each FILE record, applies the update-sequence (fixup) array that NTFS uses to detect torn writes, and then walks the record's resident attributes. It extracts the timestamps from two attributes: \$STANDARD\_INFORMATION, which holds the times shown to users and which anti-forensic tools can change easily, and \$FILE\_NAME, which the kernel maintains and which is harder to alter from user space. A record that does not parse is skipped, because evidence is untrusted input.
 
@@ -125,12 +167,63 @@ NO\_JRNL\_FOR\_CHANGE & SI modified time newer than any journal entry for the fi
 \end{tabular}
 \end{table}
 
+Figure~\ref{fig:detect} shows the checks applied to each file. The checks run
+in order, and a file can raise more than one finding.
+
+\begin{figure}[htbp]
+\centering
+\begin{tikzpicture}[node distance=6mm and 16mm]
+  \node[proc] (start) {File: SI times, FN times,\\journal history};
+  \node[dec, below=of start] (d1) {SI created\\$<$ FN created?};
+  \node[flag, right=of d1] (f1) {HIGH\\SI\_BEFORE\_FN};
+  \node[dec, below=of d1] (d2) {SI created\\$<$ first\\journal create?};
+  \node[flag, right=of d2] (f2) {HIGH\\SI\_BEFORE\_JRNL};
+  \node[dec, below=of d2] (d3) {$\geq 2$ SI times\\sub-second = 0?};
+  \node[flag, right=of d3] (f3) {MEDIUM\\ZERO\_SUBSECOND};
+  \node[dec, below=of d3] (d4) {SI modified\\$>$ latest\\journal entry?};
+  \node[flag, right=of d4] (f4) {MEDIUM\\NO\_JRNL\_FOR\_CHANGE};
+  \node[proc, below=of d4] (end) {Next file};
+  \draw[arr] (start) -- (d1);
+  \draw[arr] (d1) -- node[left,font=\scriptsize]{no} (d2);
+  \draw[arr] (d2) -- node[left,font=\scriptsize]{no} (d3);
+  \draw[arr] (d3) -- node[left,font=\scriptsize]{no} (d4);
+  \draw[arr] (d4) -- node[left,font=\scriptsize]{no} (end);
+  \draw[arr] (d1) -- node[above,font=\scriptsize]{yes} (f1);
+  \draw[arr] (d2) -- node[above,font=\scriptsize]{yes} (f2);
+  \draw[arr] (d3) -- node[above,font=\scriptsize]{yes} (f3);
+  \draw[arr] (d4) -- node[above,font=\scriptsize]{yes} (f4);
+\end{tikzpicture}
+\caption{Timestomping checks applied per file. Each rule compares the
+easily altered \$STANDARD\_INFORMATION (SI) times against the \$FILE\_NAME (FN)
+times and the change journal.}
+\label{fig:detect}
+\end{figure}
+
 Two of these rules need care to avoid false positives. The change journal is a ring buffer, so on a real volume the oldest surviving record is usually not the file's creation. The SI\_BEFORE\_JRNL rule therefore fires only when the journal holds an explicit file-creation record for the file, not when it simply holds an old edit. NTFS also reuses an \$MFT record number after a file is deleted, so journal records from a previous file can share a record number with the current one. The detector matches on the record's sequence number as well, so that history belonging to a deleted file is not read as tampering on the file that replaced it.
 
 \subsection{Network Metadata and Correlation}
 The pcap reader parses the classic libpcap format with Ethernet and IPv4 frames. It builds one flow record per connection, holding the endpoints, ports, packet and byte counts per direction, and the first and last time the flow was seen. It also reads two pieces of cleartext that are present without any keys: DNS query names, and the server name sent in a TLS ClientHello. It performs no decryption.
 
-The correlator looks for a large outbound transfer whose start time falls within a configurable window of a disk change recorded in the journal, which is the shape of a stage-and-exfiltrate step. All of the disk and network events are then merged into one timeline sorted by time, so that a file creation, its journal record, and a later outbound transfer to an external host appear in sequence.
+The correlator looks for a large outbound transfer whose start time falls within a configurable window of a disk change recorded in the journal, which is the shape of a stage-and-exfiltrate step. All of the disk and network events are then merged into one timeline sorted by time, so that a file creation, its journal record, and a later outbound transfer to an external host appear in sequence. Figure~\ref{fig:corr} shows the matching logic.
+
+\begin{figure}[htbp]
+\centering
+\begin{tikzpicture}[node distance=6mm and 14mm]
+  \node[proc] (flows) {Outbound flows\\(size $\geq$ threshold)};
+  \node[proc, right=24mm of flows] (changes) {Journal disk\\changes};
+  \node[dec, below=18mm of $(flows)!0.5!(changes)$] (d) {$|t_{\text{flow}} - t_{\text{change}}|$\\$\leq$ window?};
+  \node[flag, below=of d] (corr) {Emit correlation\\(flow $\leftrightarrow$ file)};
+  \node[io, below=of corr] (tl) {Add to unified\\timeline};
+  \draw[arr] (flows) -- (d);
+  \draw[arr] (changes) -- (d);
+  \draw[arr] (d) -- node[right,font=\scriptsize]{yes} (corr);
+  \draw[arr] (corr) -- (tl);
+\end{tikzpicture}
+\caption{Exfiltration correlation: each large outbound flow is paired with any
+disk change that falls within the time window, and the pair is added to the
+timeline.}
+\label{fig:corr}
+\end{figure}
 
 \section{Implementation Details}
 
