@@ -131,6 +131,51 @@ async function analyze() {
   }
 }
 
+// A plain-language summary built from the actual results, so it is correct
+// for any input and doubles as the "what did the engine conclude" narrative.
+function renderStory(data) {
+  const box = $("#story");
+  box.textContent = "";
+  const s = data.summary;
+  const points = [];
+
+  const parsed = [];
+  if (s.mft_entries) parsed.push(s.mft_entries + " MFT entries");
+  if (s.usn_records) parsed.push(s.usn_records + " journal records");
+  if (s.packets) parsed.push(s.packets + " packets in " + s.flows + " flows");
+  if (parsed.length) points.push("Parsed " + parsed.join(", ") + ".");
+
+  if (s.findings) {
+    const files = (s.flagged_files || []).join(", ");
+    points.push("Flagged timestamp tampering on " + s.findings +
+      (s.findings === 1 ? " file" : " findings") +
+      (files ? " (" + files + ")" : "") +
+      ". The kernel-maintained records disagree with the file's own " +
+      "timestamps, which points to backdating.");
+  } else {
+    points.push("No timestamp tampering was detected.");
+  }
+
+  if (s.correlations) {
+    points.push("Linked " + s.correlations + " outbound transfer" +
+      (s.correlations === 1 ? "" : "s") + " to a disk change within the time " +
+      "window. That is the shape of staging a file and sending it out.");
+  }
+
+  if (s.timeline_events) {
+    points.push("Placed " + s.timeline_events +
+      " disk and network events on one timeline, below.");
+  }
+
+  if (!points.length) { box.hidden = true; return; }
+  const h = el("h4", null, "What the engine found");
+  box.appendChild(h);
+  const ol = document.createElement("ol");
+  for (const p of points) ol.appendChild(el("li", null, p));
+  box.appendChild(ol);
+  box.hidden = false;
+}
+
 function card(num, lbl) {
   const c = el("div", "card");
   c.appendChild(el("div", "num", String(num)));
@@ -151,6 +196,8 @@ function renderResults(data) {
     card(s.findings, "findings"),
     card(s.correlations, "correlations"),
   );
+
+  renderStory(data);
 
   // Findings
   $("#n-findings").textContent = data.findings.length;

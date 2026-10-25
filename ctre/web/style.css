@@ -102,3 +102,57 @@ th { background: rgba(22,160,133,.1); }
 .filters { display: flex; gap: .9rem; flex-wrap: wrap; font-size: .88rem; margin: .3rem 0 .6rem; }
 .filters label { display: flex; align-items: center; gap: .3rem; cursor: pointer; }
 footer { color: var(--muted); font-size: .8rem; padding-bottom: 2.5rem; }
+
+/* ---- explainer additions ---- */
+.scope-badge {
+  display: inline-block; margin: 0 0 1rem; font-size: .82rem;
+  background: rgba(22,160,133,.12); color: var(--accent);
+  border: 1px solid var(--accent); border-radius: 6px; padding: .3rem .6rem;
+}
+.overview p { margin-top: 0; }
+.overview strong { color: var(--accent); }
+
+.pipeline { margin: 1.2rem 0; }
+.pipeline svg { width: 100%; height: auto; }
+.pipeline rect { fill: var(--bg); stroke: var(--border); stroke-width: 1.5; }
+.p-in rect { stroke: #8e44ad; }
+.p-step rect { stroke: var(--accent); }
+.p-out rect { stroke: #2980b9; }
+.pipeline text {
+  fill: var(--text); font-family: system-ui, sans-serif; font-size: 15px;
+  font-weight: 600; text-anchor: middle; dominant-baseline: middle;
+}
+.pipeline text.p-small { font-size: 12px; font-weight: 400; fill: var(--muted); }
+.p-arrow line { stroke: var(--muted); stroke-width: 1.6; opacity: .7; }
+
+.steps { list-style: none; counter-reset: none; margin: 1rem 0 0; padding: 0;
+  display: grid; gap: .9rem; }
+.steps li { display: flex; gap: .9rem; align-items: flex-start; }
+.step-n {
+  flex: 0 0 auto; width: 28px; height: 28px; border-radius: 50%;
+  background: var(--accent); color: #fff; font-weight: 700;
+  display: flex; align-items: center; justify-content: center; font-size: .95rem;
+}
+.steps h3 { margin: .1rem 0 .2rem; font-size: 1rem; }
+.steps p { margin: 0; font-size: .92rem; color: var(--text); }
+
+.story {
+  background: rgba(22,160,133,.08); border: 1px solid var(--accent);
+  border-radius: 8px; padding: .9rem 1.1rem; margin: 1rem 0; font-size: .92rem;
+}
+.story h4 { margin: 0 0 .4rem; }
+.story ol { margin: .3rem 0 0; padding-left: 1.2rem; }
+.story li { margin: .2rem 0; }
+
+.reference details {
+  border: 1px solid var(--border); border-radius: 8px; padding: .3rem .9rem;
+  margin-bottom: .7rem;
+}
+.reference summary {
+  cursor: pointer; font-weight: 600; padding: .5rem 0; font-size: 1rem;
+}
+.reference details[open] summary { border-bottom: 1px solid var(--border);
+  margin-bottom: .6rem; }
+.glossary { margin: 0; }
+.glossary dt { font-weight: 700; margin-top: .5rem; }
+.glossary dd { margin: .1rem 0 0; color: var(--muted); font-size: .9rem; }

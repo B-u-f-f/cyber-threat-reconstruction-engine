@@ -10,17 +10,132 @@
 <header>
   <h1>Cyber Threat Reconstruction Engine</h1>
   <p class="sub">Offline, read-only DFIR correlation. Nothing leaves your machine.</p>
+  <p class="scope-badge">No traffic is decrypted. The network stage reads only
+     metadata that is already visible in the capture.</p>
 </header>
 
 <main>
+  <!-- ============================ OVERVIEW ============================ -->
+  <section class="panel overview">
+    <h2>What this tool does</h2>
+    <p>A Windows intrusion leaves traces in more than one place. A file lands
+       on disk, the filesystem records the change, and traffic leaves the
+       machine. Those traces are usually examined with separate tools, so the
+       link between them is easy to miss. CTRE reads three artifacts together,
+       looks for <strong>timestamp tampering</strong> and
+       <strong>data exfiltration</strong>, and lays everything on one
+       timeline.</p>
+
+    <div class="pipeline" aria-label="Pipeline diagram">
+      <svg viewBox="0 0 820 240" role="img" xmlns="http://www.w3.org/2000/svg">
+        <!-- inputs -->
+        <g class="p-in">
+          <rect x="10" y="20" width="150" height="40" rx="6"/>
+          <text x="85" y="45">$MFT</text>
+        </g>
+        <g class="p-in">
+          <rect x="10" y="100" width="150" height="40" rx="6"/>
+          <text x="85" y="125">$UsnJrnl:$J</text>
+        </g>
+        <g class="p-in">
+          <rect x="10" y="180" width="150" height="40" rx="6"/>
+          <text x="85" y="205">.pcap</text>
+        </g>
+
+        <!-- parse -->
+        <g class="p-step">
+          <rect x="250" y="80" width="150" height="80" rx="6"/>
+          <text x="325" y="115">Parse</text>
+          <text x="325" y="138" class="p-small">read-only</text>
+        </g>
+
+        <!-- analyze -->
+        <g class="p-step">
+          <rect x="470" y="20" width="170" height="60" rx="6"/>
+          <text x="555" y="46">Timestomp</text>
+          <text x="555" y="66" class="p-small">detection</text>
+        </g>
+        <g class="p-step">
+          <rect x="470" y="160" width="170" height="60" rx="6"/>
+          <text x="555" y="186">Exfil</text>
+          <text x="555" y="206" class="p-small">correlation</text>
+        </g>
+
+        <!-- output -->
+        <g class="p-out">
+          <rect x="700" y="80" width="110" height="80" rx="6"/>
+          <text x="755" y="115">Timeline</text>
+          <text x="755" y="138">+ report</text>
+        </g>
+
+        <!-- arrows -->
+        <g class="p-arrow">
+          <line x1="160" y1="40"  x2="250" y2="100"/>
+          <line x1="160" y1="120" x2="250" y2="120"/>
+          <line x1="160" y1="200" x2="250" y2="140"/>
+          <line x1="400" y1="110" x2="470" y2="55"/>
+          <line x1="400" y1="130" x2="470" y2="185"/>
+          <line x1="640" y1="50"  x2="700" y2="105"/>
+          <line x1="640" y1="190" x2="700" y2="135"/>
+        </g>
+      </svg>
+    </div>
+
+    <ol class="steps">
+      <li>
+        <span class="step-n">1</span>
+        <div>
+          <h3>Load the artifacts</h3>
+          <p>The <code>$MFT</code> is the NTFS master file table (one record
+             per file, with its timestamps). The <code>$UsnJrnl</code> is the
+             change journal, a running log the kernel keeps of every filesystem
+             change. The <code>.pcap</code> is a network capture. Drop in any
+             combination, or load the built-in sample case.</p>
+        </div>
+      </li>
+      <li>
+        <span class="step-n">2</span>
+        <div>
+          <h3>Parse, read-only</h3>
+          <p>Each file is opened read-only and parsed defensively, so a
+             malformed or hostile artifact is skipped instead of crashing the
+             run. Timestamps are converted to a single UTC time base so disk
+             and network events can be compared.</p>
+        </div>
+      </li>
+      <li>
+        <span class="step-n">3</span>
+        <div>
+          <h3>Detect and correlate</h3>
+          <p>The detector compares the easily altered <code>$MFT</code>
+             timestamps against the harder-to-forge <code>$FILE_NAME</code>
+             times and against the change journal, flagging timestomping. The
+             correlator looks for a large outbound transfer that lines up in
+             time with a disk change.</p>
+        </div>
+      </li>
+      <li>
+        <span class="step-n">4</span>
+        <div>
+          <h3>Review the timeline</h3>
+          <p>Findings, correlations, and every disk and network event appear on
+             one timeline you can filter by source. Download the HTML report or
+             the JSON to keep or share.</p>
+        </div>
+      </li>
+    </ol>
+  </section>
+
+  <!-- ============================ WORKFLOW =========================== -->
   <section class="panel">
     <h2>1 · Load artifacts</h2>
     <p class="hint">Drop in any combination of an NTFS <code>$MFT</code>,
       a <code>$UsnJrnl:$J</code> stream, and a classic <code>.pcap</code>.
-      Files are parsed locally and read-only.</p>
+      Files are parsed locally and read-only. New here? Click
+      <strong>Load sample case</strong> for a ready-made scenario.</p>
     <div class="slots" id="slots"></div>
     <div class="row">
-      <button id="sample" class="ghost">Load sample case</button>
+      <button id="sample" class="primary">Load sample case</button>
       <button id="clear" class="ghost">Clear all</button>
     </div>
   </section>
@@ -41,6 +156,9 @@
         </select>
       </label>
     </div>
+    <p class="hint">The threshold is how many bytes an outbound flow must carry
+       to count as a possible transfer. The window is how far apart a transfer
+       and a disk change can be and still be linked.</p>
     <div class="row">
       <button id="analyze" class="primary" disabled>Run analysis</button>
       <span id="status" class="status"></span>
@@ -56,21 +174,99 @@
       <a id="dl-json" href="/api/export" class="ghost">Download JSON</a>
     </div>
 
+    <div id="story" class="story" hidden></div>
+
     <h3>Timestomping findings (<span id="n-findings">0</span>)</h3>
+    <p class="hint">Each row is a file whose timestamps look altered, with the
+       rule that caught it and why. See the rule reference below.</p>
     <div id="findings"></div>
 
     <h3>Network / disk correlations (<span id="n-corr">0</span>)</h3>
+    <p class="hint">A large outbound transfer that happened close in time to a
+       disk change. The shape of staging a file and sending it out.</p>
     <div id="correlations"></div>
 
     <h3>Unified timeline (<span id="n-timeline">0</span>)</h3>
     <div class="filters" id="filters"></div>
     <div id="timeline"></div>
   </section>
+
+  <!-- =========================== REFERENCE =========================== -->
+  <section class="panel reference">
+    <h2>How to read the results</h2>
+
+    <details open>
+      <summary>Timestomping rules</summary>
+      <p>Windows stores two sets of timestamps for a file. The
+         <code>$STANDARD_INFORMATION</code> (SI) times are what tools and users
+         see, and they are easy to rewrite. The <code>$FILE_NAME</code> (FN)
+         times and the change journal are maintained by the kernel and are
+         harder to forge. The detector looks for disagreements between them.</p>
+      <table>
+        <thead><tr><th>Rule</th><th>Severity</th><th>What it means</th></tr></thead>
+        <tbody>
+          <tr><td><code>SI_BEFORE_FN</code></td><td><span class="badge sev-high">HIGH</span></td>
+            <td>The file's SI creation time is earlier than its FN creation
+                time. A file cannot be created before its own name record, so
+                the SI time was likely set into the past.</td></tr>
+          <tr><td><code>SI_BEFORE_JRNL</code></td><td><span class="badge sev-high">HIGH</span></td>
+            <td>The SI creation time is earlier than the journal's own record
+                of the file being created. The journal cannot log a file
+                before it exists.</td></tr>
+          <tr><td><code>ZERO_SUBSECOND</code></td><td><span class="badge sev-medium">MEDIUM</span></td>
+            <td>Several SI timestamps have their sub-second digits zeroed. Many
+                timestomping tools write whole-second times. (So do files from
+                ZIP archives or FAT media, so treat this as a lead.)</td></tr>
+          <tr><td><code>NO_JRNL_FOR_CHANGE</code></td><td><span class="badge sev-medium">MEDIUM</span></td>
+            <td>The SI modified time is newer than any journal entry for the
+                file, i.e. a change the journal never recorded.</td></tr>
+        </tbody>
+      </table>
+    </details>
+
+    <details>
+      <summary>Exfiltration correlation</summary>
+      <p>The correlator pairs a large outbound flow with a disk change that
+         happened within the time window. On its own, neither is proof: a big
+         upload can be legitimate, and files change constantly. Together, a file
+         appearing or changing and then a transfer of similar timing to an
+         external host is the pattern worth examining. CTRE reads only the size,
+         timing, and destination of the transfer, never its contents.</p>
+    </details>
+
+    <details>
+      <summary>Glossary</summary>
+      <dl class="glossary">
+        <dt>$MFT</dt><dd>NTFS master file table. One record per file, holding
+          its attributes and timestamps.</dd>
+        <dt>$UsnJrnl:$J</dt><dd>The NTFS change journal, an append-only log of
+          filesystem changes kept by the kernel.</dd>
+        <dt>Timestomping</dt><dd>Altering a file's timestamps to hide when it
+          was created or changed, a common anti-forensic technique.</dd>
+        <dt>Flow</dt><dd>One network connection, summarized by its endpoints,
+          ports, timing, and byte counts.</dd>
+        <dt>SNI</dt><dd>Server Name Indication, the hostname a client sends in
+          the clear when starting a TLS connection.</dd>
+        <dt>Exfiltration</dt><dd>Moving data off a system, often the goal of an
+          intrusion.</dd>
+      </dl>
+    </details>
+
+    <details>
+      <summary>Scope and safety</summary>
+      <p>CTRE works on copies of already-collected artifacts and never writes
+         to them. It makes no network connections of its own. It does not read
+         TLS keys from memory and does not decrypt traffic; that would be a
+         general-purpose interception tool, so it is left out on purpose. This
+         local server listens only on your own machine and deletes uploaded
+         files when it stops.</p>
+    </details>
+  </section>
 </main>
 
 <footer>
-  <p>No TLS secrets are extracted and no traffic is decrypted; network findings
-     use capture metadata only.</p>
+  <p>Offline, read-only. Network findings use capture metadata only; no traffic
+     is decrypted.</p>
 </footer>
 
 <script src="/app.js"></script>
