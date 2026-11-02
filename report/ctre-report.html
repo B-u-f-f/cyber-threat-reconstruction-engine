@@ -1,0 +1,56 @@
+<!doctype html>
+<html lang="en"><head><meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>CTRE Threat Reconstruction Report</title>
+<style>
+ :root { color-scheme: light dark; }
+ body { font-family: system-ui, sans-serif; margin: 0; padding: 2rem;
+        line-height: 1.5; max-width: 1100px; margin: 0 auto; }
+ h1 { border-bottom: 3px solid #16a085; padding-bottom: .3rem; }
+ h2 { margin-top: 2.5rem; border-left: 4px solid #16a085; padding-left: .6rem; }
+ table { border-collapse: collapse; width: 100%; margin-top: 1rem;
+          font-size: .92rem; }
+ th, td { border: 1px solid #ccc; padding: .5rem .6rem; text-align: left;
+           vertical-align: top; }
+ th { background: rgba(22,160,133,.12); }
+ code { background: rgba(127,127,127,.18); padding: 0 .3rem; border-radius: 3px; }
+ .badge, .tag { color: #fff; padding: .1rem .5rem; border-radius: 10px;
+                 font-size: .78rem; white-space: nowrap; }
+ .ok { color: #16a085; font-weight: 600; }
+ .filters { margin-top: 1rem; font-size: .9rem; }
+ .filters label { margin-right: .4rem; }
+ .meta { background: rgba(127,127,127,.1); padding: 1rem; border-radius: 6px; }
+ footer { margin-top: 3rem; font-size: .8rem; color: #888; }
+</style></head><body>
+<h1>Cyber Threat Reconstruction Report</h1>
+<div class="meta">
+ <p>Generated: 2026-11-02 18:06:42 UTC</p>
+ <p>Mode: offline, read-only. No TLS secrets were extracted and no network
+    traffic was decrypted; network findings use capture metadata only.</p>
+ <ul><li><b>engine_version</b>: 0.1.0</li><li><b>$MFT</b>: sample_artifacts/mft.bin</li><li><b>$UsnJrnl</b>: sample_artifacts/usnjrnl.bin</li><li><b>pcap</b>: sample_artifacts/capture.pcap</li></ul>
+</div>
+
+<h2>1. Timestomping findings (3)</h2>
+<table><thead><tr><th>Severity</th><th>File</th><th>Rule</th><th>Explanation</th></tr></thead><tbody><tr><td><span class='badge' style='background:#c0392b'>HIGH</span></td><td>svchost.exe</td><td><code>SI_BEFORE_FN</code></td><td>$STANDARD_INFORMATION creation time is earlier than $FILE_NAME creation time, which is a hallmark of backdated (timestomped) SI timestamps.<br><small>si_created=2019-01-01 00:00:00+00:00, fn_created=2026-10-20 11:00:00.500000+00:00</small></td></tr><tr><td><span class='badge' style='background:#c0392b'>HIGH</span></td><td>svchost.exe</td><td><code>SI_BEFORE_JRNL</code></td><td>File&#x27;s SI creation time predates its first $UsnJrnl record. The journal cannot record a file before it exists, so the SI time appears to have been set into the past.<br><small>si_created=2019-01-01 00:00:00+00:00, first_journal=2026-10-20 11:00:00.500000+00:00</small></td></tr><tr><td><span class='badge' style='background:#e67e22'>MEDIUM</span></td><td>svchost.exe</td><td><code>ZERO_SUBSECOND</code></td><td>Multiple SI timestamps have all sub-second precision set to zero. Normal filesystem activity rarely produces whole-second times; many timestomping tools do. (Files extracted from ZIP archives or copied from FAT media can also do this.)<br><small>zeroed_fields=[&#x27;created&#x27;, &#x27;modified&#x27;, &#x27;accessed&#x27;]</small></td></tr></tbody></table>
+
+<h2>2. Network / disk correlations (2)</h2>
+<table><thead><tr><th>Time (UTC)</th><th>Correlation</th></tr></thead><tbody><tr><td>2026-10-20 11:00:31.500000+00:00</td><td>Outbound transfer to exfil.example.net (162972 bytes) within 0:05:00 of disk change to &#x27;svchost.exe&#x27; (FILE_CREATE).</td></tr><tr><td>2026-10-20 11:00:31.500000+00:00</td><td>Outbound transfer to exfil.example.net (162972 bytes) within 0:05:00 of disk change to &#x27;svchost.exe&#x27; (DATA_OVERWRITE).</td></tr></tbody></table>
+
+<h2>3. Unified timeline (9 events)</h2>
+<div class='filters'>Filter: <label><input type='checkbox' checked data-src='usnjrnl'> usnjrnl</label> <label><input type='checkbox' checked data-src='mft'> mft</label> <label><input type='checkbox' checked data-src='network'> network</label> <label><input type='checkbox' checked data-src='dns'> dns</label> </div><table><thead><tr><th>Time (UTC)</th><th>Source</th><th>Event</th></tr></thead><tbody><tr data-source='mft'><td>2019-01-01 00:00:00+00:00</td><td><span class='tag' style='background:#8e44ad'>mft</span></td><td>svchost.exe: MFT SI created</td></tr><tr data-source='usnjrnl'><td>2026-10-20 09:00:00.500000+00:00</td><td><span class='tag' style='background:#2980b9'>usnjrnl</span></td><td>report.docx: FILE_CREATE</td></tr><tr data-source='mft'><td>2026-10-20 09:00:00.500000+00:00</td><td><span class='tag' style='background:#8e44ad'>mft</span></td><td>report.docx: MFT SI created</td></tr><tr data-source='usnjrnl'><td>2026-10-20 09:05:00.500000+00:00</td><td><span class='tag' style='background:#2980b9'>usnjrnl</span></td><td>report.docx: DATA_EXTEND</td></tr><tr data-source='usnjrnl'><td>2026-10-20 11:00:00.500000+00:00</td><td><span class='tag' style='background:#2980b9'>usnjrnl</span></td><td>svchost.exe: FILE_CREATE</td></tr><tr data-source='network'><td>2026-10-20 11:00:30.500000+00:00</td><td><span class='tag' style='background:#16a085'>network</span></td><td>UDP 10.0.0.5:50000 -&gt; 10.0.0.1:53 (77 bytes)</td></tr><tr data-source='dns'><td>2026-10-20 11:00:30.500000+00:00</td><td><span class='tag' style='background:#27ae60'>dns</span></td><td>DNS query exfil.example.net from 10.0.0.5</td></tr><tr data-source='network'><td>2026-10-20 11:00:31.500000+00:00</td><td><span class='tag' style='background:#16a085'>network</span></td><td>TCP 10.0.0.5:50001 -&gt; exfil.example.net:443 (162972 bytes)</td></tr><tr data-source='usnjrnl'><td>2026-10-20 11:01:00.500000+00:00</td><td><span class='tag' style='background:#2980b9'>usnjrnl</span></td><td>svchost.exe: DATA_OVERWRITE</td></tr></tbody></table>
+<script>
+document.querySelectorAll('.filters input').forEach(cb => {
+  cb.addEventListener('change', () => {
+    const src = cb.dataset.src;
+    const show = cb.checked;
+    document.querySelectorAll('tr[data-source="' + src + '"]').forEach(r => {
+      r.style.display = show ? '' : 'none';
+    });
+  });
+});
+</script>
+
+
+<footer>Generated by CTRE 0.1.0.
+ All values escaped; report is static and offline.</footer>
+</body></html>
